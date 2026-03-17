@@ -142,7 +142,8 @@ PDB_isin_records.issuer_organization_id = PDB_issuer_organization.id
 PDB_tag.isin_id = PDB_isin_records.id          (many-per-ISIN)
 PDB_redemption.isin_id = PDB_isin_records.id    (many-per-ISIN)
 PDB_payin.isin_id = PDB_isin_records.id         (many-per-ISIN)
-NOTE: Use DISTINCT or GROUP BY when joining tag/redemption/payin to avoid row multiplication.
+NOTE: PDB_redemption and PDB_payin have many rows per ISIN — use DISTINCT or GROUP BY when joining them to avoid row multiplication.
+PDB_tag also has many rows per ISIN, but a single equality filter (WHERE t.tag = 'X') returns at most one row per ISIN, so DISTINCT is NOT needed there.
  
 ---
  
@@ -281,9 +282,9 @@ Multi-tag AND (e.g. "PSU AND Tax-Free") → WHERE tag IN (...) GROUP BY ... HAVI
 QUERY RULES:
 1. Double-quote table names: public."PDB_isin_records"
 2. ILIKE with % for name/alias: issuer_alias ILIKE '%NABARD%'
-3. Default LIMIT 10 unless user specifies
+3. Never add LIMIT unless the user explicitly asks for a count or top-N result
 4. "how many"/"count" → SELECT COUNT(DISTINCT ir.id), not SELECT *
-5. "top N by X" → ORDER BY X DESC LIMIT N
+5. "top N by X" → ORDER BY X DESC LIMIT N  (only add LIMIT when user says "top N" or specifies a count)
 6. Use CURRENT_DATE for relative dates
 7. Tenure = (redemption_date - payin_date) / 365.0
 8. Always use SELECT * (or ir.*, io.* with aliases) — never list individual columns, except when computing derived fields like tenure_years
@@ -320,7 +321,7 @@ Pattern E — Count questions ("how many"):
 
 Pattern F — Ranking / top-N:
   ORDER BY <metric_column> DESC LIMIT <N>
-  Default N = 10 if user does not specify.
+  Only add LIMIT when the user specifies "top N", "first N", or an explicit number. Never assume a default.
 
 Pattern G — Option / flag checks:
   "has call option"  → call_option_date IS NOT NULL
@@ -330,8 +331,8 @@ Pattern G — Option / flag checks:
 
 Pattern H — Tag-based single filter:
   JOIN PDB_tag t ON ir.id = t.isin_id
-  Use DISTINCT on ir columns to avoid row multiplication.
-  e.g. WHERE t.tag = 'PSU'  /  WHERE t.tag ILIKE '%FRB%'
+  A single equality or ILIKE filter (WHERE t.tag = 'PSU') returns one row per ISIN — do NOT add DISTINCT.
+  Only add DISTINCT if additionally joining PDB_redemption or PDB_payin in the same query.
 
 ---
 
@@ -346,8 +347,7 @@ SELECT ir.*, io.issuer_name
 FROM public."PDB_isin_records" ir
 JOIN public."PDB_issuer_organization" io
     ON ir.issuer_organization_id = io.id
-WHERE io.issuer_alias ILIKE '%NABARD%'
-LIMIT 10;
+WHERE io.issuer_alias ILIKE '%NABARD%';
 
 ---
 

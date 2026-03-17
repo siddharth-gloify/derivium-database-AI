@@ -7,6 +7,7 @@ import time
 from openai import OpenAI
 from dotenv import load_dotenv
 from database_context import full_db_context_helper
+from current_date_context import get_date_context
 
 load_dotenv()
 
@@ -20,15 +21,17 @@ def _get_client() -> OpenAI:
     return _client
 
 
-SYSTEM_PROMPT = f"""You are an expert PostgreSQL query writer for a bond/securities database.
+_SYSTEM_PROMPT_TEMPLATE = """You are an expert PostgreSQL query writer for a bond/securities database.
+
+{date_context}
 
 DATABASE SCHEMA, RULES AND EXAMPLES:
-{full_db_context_helper}
+{db_context}
 
 STRICT OUTPUT RULES:
 - Return ONLY the raw SQL query — no markdown, no code fences, no explanation.
 - Always double-quote table names: public."PDB_isin_records"
-- Default LIMIT 10 unless the user specifies a different number or asks for a count.
+- Never add LIMIT unless the user explicitly asks for "top N" or a specific row count.
 - For count questions use COUNT(DISTINCT ...) — that is the only case where SELECT * is not used.
 - Always use SELECT * or table_alias.* — never list individual column names, except for computed fields like tenure_years.
 - Use CURRENT_DATE for any relative date calculations.
@@ -40,11 +43,15 @@ def nl_to_sql(question: str) -> tuple[str, float]:
     Returns (sql, elapsed_seconds).
     """
     model = os.getenv("LLM_MODEL", "gpt-4o")
+    system_prompt = _SYSTEM_PROMPT_TEMPLATE.format(
+        date_context=get_date_context(),
+        db_context=full_db_context_helper,
+    )
     t0 = time.perf_counter()
     response = _get_client().chat.completions.create(
         model=model,
         messages=[
-            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "system", "content": system_prompt},
             {"role": "user", "content": question},
         ],
         temperature=0,

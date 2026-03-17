@@ -4,9 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-**fetcherio** — terminal-based natural language → PostgreSQL query generator and executor.
+**fetcherio** — natural language → PostgreSQL query generator and executor with a web UI and terminal REPL.
 
-User types a plain-English question → OpenAI LLM converts it to a SQL query using the schema context → query runs against a live PostgreSQL (AWS RDS) database → results printed to terminal.
+User types a plain-English question → OpenAI LLM converts it to SQL using schema context → query runs against a live PostgreSQL (AWS RDS) database → results displayed in a web table or terminal.
 
 ## Setup
 
@@ -15,9 +15,12 @@ User types a plain-English question → OpenAI LLM converts it to a SQL query us
 source venv/Scripts/activate
 
 # Install deps
-pip install openai psycopg2-binary python-dotenv
+pip install openai psycopg2-binary python-dotenv fastapi "uvicorn[standard]" aiofiles
 
-# Run (once main entrypoint exists)
+# Web UI (opens at http://localhost:8000)
+python start_api.py
+
+# Terminal REPL
 python src/main.py
 ```
 
@@ -39,8 +42,11 @@ PASSWORD=...
 | File | Role |
 |------|------|
 | `src/database_context.py` | All LLM context: table schemas, column descriptions, join rules, disambiguation rules, few-shot examples |
-| `src/nltopgsql.py` | Calls OpenAI with the context + user question → returns a SQL string |
-| `src/query_executor.py` | Connects to PostgreSQL via psycopg2, executes the SQL, returns/prints results |
+| `src/nltopgsql.py` | Calls OpenAI with the context + user question → returns `(sql, elapsed)` |
+| `src/query_executor.py` | Validates read-only, connects via psycopg2, executes → returns `(rows, elapsed)` |
+| `src/api.py` | FastAPI app — `POST /api/query`, serves `static/` |
+| `start_api.py` | Launches uvicorn on `http://localhost:8000` |
+| `static/` | Vanilla HTML/CSS/JS frontend (no build step) |
 | `test_db_connection.py` | Standalone connectivity check (`python test_db_connection.py`) |
 
 ## Database Schema Notes
@@ -53,7 +59,7 @@ Column quirks: `date_of_Verification` (capital V), `redumption_type_of_harrier` 
 
 ## Query Generation Rules (from `database_context.py`)
 
-- Default `LIMIT 10` unless user specifies
+- No default `LIMIT` — only add `LIMIT` when user explicitly says "top N" or specifies a count
 - "coupon rate" (unqualified) → `current_coupon`; "maturity date" → `PDB_redemption.redemption_date`
 - Tenure computed as `(redemption_date - payin_date) / 365.0`
 - Name/alias matching: `ILIKE '%name%'`

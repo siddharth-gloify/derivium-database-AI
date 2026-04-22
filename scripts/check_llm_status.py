@@ -2,27 +2,23 @@
 Standalone LLM connectivity check — verifies OpenAI API key works.
 Usage: python test_llm_status.py
 """
-import os
 import sys
-from dotenv import load_dotenv
+
 from openai import OpenAI, AuthenticationError, APIConnectionError
 
-load_dotenv()
+from app.config import settings
 
 
 def test_llm():
-    api_key = os.getenv("OPENAI_API_KEY")
-    model   = os.getenv("LLM_MODEL", "gpt-4o")
-
-    if not api_key:
+    if not settings.openai_api_key:
         print("OPENAI_API_KEY not set in .env")
         sys.exit(1)
 
-    print(f"Testing OpenAI connection (model: {model}) ...")
-    client = OpenAI(api_key=api_key)
+    print(f"Testing OpenAI connection (model: {settings.llm_model}) ...")
+    client = OpenAI(api_key=settings.openai_api_key)
     try:
         resp = client.chat.completions.create(
-            model=model,
+            model=settings.llm_model,
             messages=[{"role": "user", "content": "Reply with: OK"}],
             max_tokens=5,
         )
@@ -32,8 +28,8 @@ def test_llm():
     except AuthenticationError:
         print("Authentication failed — check your OPENAI_API_KEY.")
         sys.exit(1)
-    except APIConnectionError as e:
-        print(f"Connection error: {e}")
+    except APIConnectionError as exc:
+        print(f"Connection error: {exc}")
         sys.exit(1)
 
 

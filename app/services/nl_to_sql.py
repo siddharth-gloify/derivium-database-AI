@@ -1,23 +1,19 @@
-"""
-Converts a natural-language question to a PostgreSQL query using OpenAI.
-"""
-import os
 import re
 import time
+
 from openai import OpenAI
-from dotenv import load_dotenv
-from database_context import full_db_context_helper
-from current_date_context import get_date_context
 
-load_dotenv()
+from app.config import settings
+from app.context.db_schema import full_db_context_helper
+from app.context.date import get_date_context
 
-_client = None
+_client: OpenAI | None = None
 
 
 def _get_client() -> OpenAI:
     global _client
     if _client is None:
-        _client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        _client = OpenAI(api_key=settings.openai_api_key)
     return _client
 
 
@@ -42,14 +38,13 @@ def nl_to_sql(question: str) -> tuple[str, float]:
     """Convert a natural-language question to a PostgreSQL query string.
     Returns (sql, elapsed_seconds).
     """
-    model = os.getenv("LLM_MODEL", "gpt-4o")
     system_prompt = _SYSTEM_PROMPT_TEMPLATE.format(
         date_context=get_date_context(),
         db_context=full_db_context_helper,
     )
     t0 = time.perf_counter()
     response = _get_client().chat.completions.create(
-        model=model,
+        model=settings.llm_model,
         messages=[
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": question},
@@ -58,7 +53,6 @@ def nl_to_sql(question: str) -> tuple[str, float]:
     )
     elapsed = time.perf_counter() - t0
     raw = response.choices[0].message.content.strip()
-    # Strip any accidental markdown fences
     raw = re.sub(r"^```(?:sql)?\s*", "", raw, flags=re.IGNORECASE)
     raw = re.sub(r"\s*```$", "", raw)
     return raw.strip(), elapsed

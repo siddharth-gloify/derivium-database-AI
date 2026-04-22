@@ -1,11 +1,4 @@
-"""
-containts context of database schemas for llm 
-"""
-
-#schemas for postgresql for llm context 
-
-PDB_isin_records="""
-
+PDB_isin_records = """
 Table: PDB_isin_records
 
 Columns:
@@ -76,10 +69,9 @@ Columns:
 - press_release_link
 - restructured_isin
 - coupon_additional_condition
-
 """
 
-PDB_issuer_organization="""
+PDB_issuer_organization = """
 Table: PDB_issuer_organization
 
 Columns:
@@ -90,10 +82,9 @@ Columns:
 - ownership
 - created_at
 - updated_at
-
 """
 
-PDB_tag="""
+PDB_tag = """
 Table: PDB_tag
 
 Columns:
@@ -104,8 +95,7 @@ Columns:
 - isin_id
 """
 
-PDB_redemption="""
-
+PDB_redemption = """
 Table: PDB_redemption
 
 Columns:
@@ -121,7 +111,7 @@ Columns:
 - file_name_tag
 """
 
-PDB_payin="""
+PDB_payin = """
 Table: PDB_payin
 
 Columns:
@@ -132,11 +122,9 @@ Columns:
 - updated_at
 - isin_id
 - file_name_tag
-
 """
 
 full_db_context_helper = """
- 
 JOINS
 PDB_isin_records.issuer_organization_id = PDB_issuer_organization.id
 PDB_tag.isin_id = PDB_isin_records.id          (many-per-ISIN)
@@ -144,9 +132,9 @@ PDB_redemption.isin_id = PDB_isin_records.id    (many-per-ISIN)
 PDB_payin.isin_id = PDB_isin_records.id         (many-per-ISIN)
 NOTE: PDB_redemption and PDB_payin have many rows per ISIN — use DISTINCT or GROUP BY when joining them to avoid row multiplication.
 PDB_tag also has many rows per ISIN, but a single equality filter (WHERE t.tag = 'X') returns at most one row per ISIN, so DISTINCT is NOT needed there.
- 
+
 ---
- 
+
 PDB_issuer_organization — Issuer/company/borrower master.
 - id (PK)
 - issuer_name → company name, borrower name, entity name
@@ -154,9 +142,9 @@ PDB_issuer_organization — Issuer/company/borrower master.
 - issuer_industry → sector, segment, vertical | VALS: 'NBFC','Bank','Infrastructure','Power','Housing Finance'
 - ownership → PSU or private, government, state-owned | VALS: 'PSU','Private','State Government','Central Government'
 - created_at, updated_at
- 
+
 ---
- 
+
 PDB_isin_records — Core table. ISIN-level bond/security/NCD/debenture details.
 - id (PK)
 - isin → ISIN code, security identifier | FORMAT: 12-char, starts 'INE', e.g. 'INE001A07KL8'
@@ -224,17 +212,17 @@ PDB_isin_records — Core table. ISIN-level bond/security/NCD/debenture details.
 - restructured_isin → post-restructuring ISIN
 - coupon_additional_condition → extra coupon clause
 - created_at, updated_at
- 
+
 ---
- 
+
 PDB_tag — Classification tags. One ISIN can have MULTIPLE tags.
 - id (PK)
 - tag → label, category, bond type | KNOWN VALS: 'PSU','TAXFREE','FRB','Plain Vanilla','Perpetual','AT1','Tier 2','Zero Coupon','Green Bond'
 - isin_id (FK → PDB_isin_records.id)
 - created_at, updated_at
- 
+
 ---
- 
+
 PDB_redemption — Maturity/repayment schedule. Can have multiple rows per ISIN (amortizing).
 - id (PK)
 - redemption_date → maturity date, repayment date, when does it mature
@@ -245,9 +233,9 @@ PDB_redemption — Maturity/repayment schedule. Can have multiple rows per ISIN 
 - isin_id (FK → PDB_isin_records.id)
 - file_name_tag → source file reference
 - created_at, updated_at
- 
+
 ---
- 
+
 PDB_payin — Subscription/investment inflow records.
 - id (PK)
 - payin_date → payment date, subscription date, allotment date
@@ -255,11 +243,11 @@ PDB_payin — Subscription/investment inflow records.
 - isin_id (FK → PDB_isin_records.id)
 - file_name_tag → source file reference
 - created_at, updated_at
- 
+
 ---
- 
+
 UNITS: *_cr = ₹ Crores | *_bps = basis points (0.01%) | coupon/rate fields = percentage | tenure = (redemption_date - payin_date)/365.0
- 
+
 DISAMBIGUATION:
 "coupon rate"/"interest rate" (unqualified) → current_coupon
 "fixed rate"/"fixed coupon" → coupon_fixed
@@ -278,7 +266,7 @@ DISAMBIGUATION:
 "has call option" → call_option_date IS NOT NULL
 "has put option" → put_option_date IS NOT NULL
 Multi-tag AND (e.g. "PSU AND Tax-Free") → WHERE tag IN (...) GROUP BY ... HAVING COUNT(DISTINCT tag) = N
- 
+
 QUERY RULES:
 1. Double-quote table names: public."PDB_isin_records"
 2. ILIKE with % for name/alias: issuer_alias ILIKE '%NABARD%'
@@ -364,5 +352,4 @@ JOIN public."PDB_redemption" r ON ir.id = r.isin_id
 WHERE io.issuer_alias ILIKE '%PFC%'
 AND (r.redemption_date - p.payin_date) / 365.0 > 5
 AND p.payin_date >= CURRENT_DATE - INTERVAL '6 months';
-
 """

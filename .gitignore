@@ -39,6 +39,7 @@ pyrightconfig.json
 
 # Logs
 *.log
+logs/
 
 .claude
 .pytest_cache

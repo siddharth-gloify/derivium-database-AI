@@ -4,9 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-**fetcherio** — natural language → PostgreSQL query generator and executor with a web UI and terminal REPL.
+**fetcherio** — natural language → PostgreSQL query generator and executor with a web UI.
 
-User types a plain-English question → OpenAI LLM converts it to SQL using schema context → query runs against a live PostgreSQL (AWS RDS) database → results displayed in a web table or terminal.
+User types a plain-English question → OpenAI LLM converts it to SQL using schema context → query runs against a live PostgreSQL (AWS RDS) database → results displayed in a web table.
 
 ## Setup
 
@@ -20,11 +20,11 @@ pip install -r requirements.txt
 # Web UI — auto-reloads on code changes (http://localhost:8000)
 python run.py
 
-# Terminal REPL (interactive)
-python -m cli.repl
+# Run all tests (no live DB or API key needed — all external calls are mocked)
+pytest
 
-# Terminal — single question
-python -m cli.repl "show all NABARD bonds"
+# Run a single test file
+pytest tests/test_query_executor.py
 
 # DB connectivity check
 python scripts/check_db_connection.py
@@ -62,11 +62,9 @@ app/
   context/
     db_schema.py       # full_db_context_helper — the string sent to the LLM
     date.py            # get_date_context() — injects IST date into system prompt
-cli/
-  repl.py              # Terminal REPL / single-question runner
-scripts/
-  check_db.py          # Standalone connectivity check
+scripts/               # Standalone connectivity checks
 static/                # Vanilla HTML/CSS/JS frontend (no build step)
+tests/                 # pytest — all external calls mocked
 run.py                 # Starts uvicorn (reload=True)
 ```
 
@@ -74,7 +72,7 @@ run.py                 # Starts uvicorn (reload=True)
 
 `POST /api/query` → `nl_to_sql()` → `validate_read_only()` → `execute_query()` → JSON response
 
-The API always returns a dict even on error; partial results are included (e.g., SQL is returned even when the DB call fails). `validate_read_only` raises `ValueError` (not `sys.exit`).
+The API always returns a dict even on error; partial results are included (e.g., SQL is returned even when the DB call fails). `validate_read_only` raises `ValueError` (not `sys.exit`). The route is defined in `app/api/routes/query.py` and mounted under `/api` in `app/main.py`.
 
 ### LLM context
 
@@ -82,7 +80,7 @@ The system prompt is assembled in `app/services/nl_to_sql.py` (`_SYSTEM_PROMPT_T
 - `full_db_context_helper` from `app/context/db_schema.py` — schemas, join rules, disambiguation, query patterns, few-shot examples
 - `get_date_context()` from `app/context/date.py` — today's IST date
 
-The individual table variables in `db_schema.py` are documentation only; only `full_db_context_helper` is sent to the LLM.
+The individual table variables in `db_schema.py` are documentation only; only `full_db_context_helper` is sent to the LLM. The OpenAI client is lazily initialized and cached in `_client` inside `nl_to_sql.py`.
 
 ## Database Schema Notes
 
@@ -101,3 +99,4 @@ Column quirks: `date_of_Verification` (capital V), `redumption_type_of_harrier` 
 - Multi-tag AND queries: `WHERE tag IN (...) GROUP BY ... HAVING COUNT(DISTINCT tag) = N`
 - Always use `SELECT *` (or `ir.*, io.*` with aliases) — never list individual columns except for computed fields
 - Always use `CURRENT_DATE` for relative dates — never hardcode
+- Count queries use `COUNT(DISTINCT ...)` — the only case where `SELECT *` is not used

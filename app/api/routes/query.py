@@ -1,10 +1,12 @@
 from fastapi import APIRouter
 from pydantic import BaseModel
 
+from app.logger import get_logger
 from app.services.nl_to_sql import nl_to_sql
 from app.services.query_executor import execute_query, validate_read_only
 
 router = APIRouter()
+log = get_logger(__name__)
 
 
 class QueryRequest(BaseModel):
@@ -13,6 +15,8 @@ class QueryRequest(BaseModel):
 
 @router.post("/query")
 async def run_query(req: QueryRequest):
+    log.info("query | question=%r", req.question)
+
     result: dict = {
         "sql": None,
         "llm_time": 0.0,
@@ -29,6 +33,7 @@ async def run_query(req: QueryRequest):
         result["sql"] = sql
         result["llm_time"] = round(llm_time, 3)
     except Exception as exc:
+        log.error("query | LLM error | question=%r | error=%s", req.question, exc)
         result["error"] = f"LLM error: {exc}"
         return result
 
@@ -36,6 +41,7 @@ async def run_query(req: QueryRequest):
         validate_read_only(sql)
         result["validated"] = True
     except ValueError as exc:
+        log.warning("query | read-only validation failed | sql=%r | reason=%s", sql, exc)
         result["error"] = str(exc)
         return result
 
@@ -47,6 +53,14 @@ async def run_query(req: QueryRequest):
         if rows:
             result["columns"] = list(rows[0].keys())
     except Exception as exc:
+        log.error("query | DB error | sql=%r | error=%s", sql, exc)
         result["error"] = f"DB error: {exc}"
 
+    log.info(
+        "query | done | rows=%d | llm=%.3fs | db=%.3fs | error=%s",
+        result["row_count"],
+        result["llm_time"],
+        result["db_time"],
+        result["error"],
+    )
     return result

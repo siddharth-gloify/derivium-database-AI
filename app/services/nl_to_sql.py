@@ -1,3 +1,4 @@
+import json
 import re
 import time
 
@@ -6,6 +7,9 @@ from openai import OpenAI
 from app.config import settings
 from app.context.db_schema import full_db_context_helper
 from app.context.date import get_date_context
+from app.logger import get_logger
+
+log = get_logger(__name__)
 
 _client: OpenAI | None = None
 
@@ -42,17 +46,62 @@ def nl_to_sql(question: str) -> tuple[str, float]:
         date_context=get_date_context(),
         db_context=full_db_context_helper,
     )
-    t0 = time.perf_counter()
-    response = _get_client().chat.completions.create(
-        model=settings.llm_model,
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": question},
-        ],
-        temperature=0,
+
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": question},
+    ]
+
+    log.info("LLM request | model=%s | question=%r", settings.llm_model, question)
+    log.debug(
+        "LLM request payload | messages=%s",
+        json.dumps(messages, ensure_ascii=False),
     )
+
+    t0 = time.perf_counter()
+    try:
+        response = _get_client().chat.completions.create(
+            model=settings.llm_model,
+            messages=messages,
+            temperature=0,
+        )
+    except Exception:
+        log.exception("LLM call failed | model=%s | question=%r", settings.llm_model, question)
+        raise
+
     elapsed = time.perf_counter() - t0
+    usage = response.usage
     raw = response.choices[0].message.content.strip()
+
+    if usage:
+        ptd = usage.prompt_tokens_details
+        ctd = usage.completion_tokens_details
+        log.info(
+            "LLM tokens | elapsed=%.3fs | "
+            "prompt=%d (cached=%d, audio=%d) | "
+            "completion=%d (reasoning=%d, audio=%d) | "
+            "total=%d",
+            elapsed,
+            usage.prompt_tokens,
+            (ptd.cached_tokens  if ptd else 0) or 0,
+            (ptd.audio_tokens   if ptd else 0) or 0,
+            usage.completion_tokens,
+            (ctd.reasoning_tokens if ctd else 0) or 0,
+            (ctd.audio_tokens     if ctd else 0) or 0,
+            usage.total_tokens,
+        )
+    else:
+        log.info("LLM tokens | elapsed=%.3fs | usage=unavailable", elapsed)
+
+    log.debug("LLM raw response | content=%r", raw)
+    try:
+        log.debug("LLM full response object | %s", response.model_dump_json(indent=2))
+    except Exception:
+        log.debug("LLM full response object | %s", response)
+
     raw = re.sub(r"^```(?:sql)?\s*", "", raw, flags=re.IGNORECASE)
     raw = re.sub(r"\s*```$", "", raw)
-    return raw.strip(), elapsed
+    sql = raw.strip()
+
+    log.debug("LLM parsed SQL | sql=%r", sql)
+    return sql, elapsed

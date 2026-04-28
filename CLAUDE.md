@@ -82,21 +82,14 @@ The system prompt is assembled in `app/services/nl_to_sql.py` (`_SYSTEM_PROMPT_T
 
 The individual table variables in `db_schema.py` are documentation only; only `full_db_context_helper` is sent to the LLM. The OpenAI client is lazily initialized and cached in `_client` inside `nl_to_sql.py`.
 
-## Database Schema Notes
+## Database Schema
 
-Five tables under `public` schema — always double-quote table names in SQL: `public."PDB_isin_records"`.
+Full schema lives in `app/context/db_schema.py` as the `full_db_context_helper` string. To change what the LLM knows about the database, edit that string directly.
 
-Key join: `PDB_isin_records.issuer_organization_id = PDB_issuer_organization.id`; tag/redemption/payin tables join on `isin_id`. Use `DISTINCT` or `GROUP BY` when joining those to avoid row multiplication.
+Two logical databases:
+- **PDB** — bond master data (ISINs, issuers, ratings, redemptions, cashflows, EBP issuance records)
+- **SDB** — secondary market trade data (individual trades, daily averages, 15-day rolling averages)
 
-Column quirks: `date_of_Verification` (capital V), `redumption_type_of_harrier` (typo — keep as-is).
+Central query hub: `PDB_ebp_records` — most queries `FROM "PDB_ebp_records" e` and JOIN outward. `PDB_issuer_organization` is joined via text match (`e.issuer_name = io.issuer_name`), not FK.
 
-## Query Generation Rules (from `app/context/db_schema.py`)
-
-- No default `LIMIT` — only add `LIMIT` when user explicitly says "top N" or specifies a count
-- "coupon rate" (unqualified) → `current_coupon`; "maturity date" → `PDB_redemption.redemption_date`
-- Tenure computed as `(redemption_date - payin_date) / 365.0`
-- Name/alias matching: `ILIKE '%name%'`
-- Multi-tag AND queries: `WHERE tag IN (...) GROUP BY ... HAVING COUNT(DISTINCT tag) = N`
-- Always use `SELECT *` (or `ir.*, io.*` with aliases) — never list individual columns except for computed fields
-- Always use `CURRENT_DATE` for relative dates — never hardcode
-- Count queries use `COUNT(DISTINCT ...)` — the only case where `SELECT *` is not used
+Column quirks to preserve: `date_of_Verification` (capital V), `redumption_type_of_harrier` (typo — keep as-is), `SDB_trade."ISIN"` / `"WAP"` / `"WAY"` (uppercase — always double-quote).

@@ -21,35 +21,17 @@ def _get_client() -> OpenAI:
     return _client
 
 
-_SYSTEM_PROMPT_TEMPLATE = """You are an expert PostgreSQL query writer for a bond/securities database.
-
-{date_context}
-
-DATABASE SCHEMA, RULES AND EXAMPLES:
-{db_context}
-
-STRICT OUTPUT RULES:
-- Return ONLY the raw SQL query — no markdown, no code fences, no explanation.
-- Always double-quote table names: public."PDB_isin_records"
-- Never add LIMIT unless the user explicitly asks for "top N" or a specific row count.
-- For count questions use COUNT(DISTINCT ...) — that is the only case where SELECT * is not used.
-- Always use SELECT * or table_alias.* — never list individual column names, except for computed fields like tenure_years.
-- Use CURRENT_DATE for any relative date calculations.
-"""
-
-
 def nl_to_sql(question: str) -> tuple[str, float]:
     """Convert a natural-language question to a PostgreSQL query string.
     Returns (sql, elapsed_seconds).
-    """
-    system_prompt = _SYSTEM_PROMPT_TEMPLATE.format(
-        date_context=get_date_context(),
-        db_context=full_db_context_helper,
-    )
 
+    System message is fully static (only full_db_context_helper) so OpenAI
+    caches it after the first call. Date context goes in the user message to
+    keep the cacheable prefix unchanged across requests.
+    """
     messages = [
-        {"role": "system", "content": system_prompt},
-        {"role": "user", "content": question},
+        {"role": "system", "content": full_db_context_helper},
+        {"role": "user", "content": f"{get_date_context()}\n\n{question}"},
     ]
 
     log.info("LLM request | model=%s | question=%r", settings.llm_model, question)
